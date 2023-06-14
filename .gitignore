@@ -1,3 +1,6 @@
+.ipynb_checkpoints/
 .cog/
 __pycache__/
 diffusers-cache/
+model_cache/
+script/.ipynb_checkpoints/

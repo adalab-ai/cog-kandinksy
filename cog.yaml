@@ -3,7 +3,7 @@ build:
   cuda: "11.8"
   python_version: "3.9"
   python_packages:
-    - "diffusers==0.17.0"
+    - "diffusers==0.18.2"
     - "torch==2.0.1"
     - "ftfy==6.1.1"
     - "scipy==1.9.3"
@@ -11,3 +11,5 @@ build:
     - "accelerate==0.20.3"
 
 predict: "predict.py:Predictor"
+
+image: "r8.im/adalab-ai/kandinsky_v2_2"

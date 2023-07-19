@@ -9,11 +9,13 @@ from diffusers import (
     KandinskyPriorPipeline,
     KandinskyPipeline,
     DPMSolverMultistepScheduler,
-    DDIMScheduler
+    DDIMScheduler,
+    UniPCMultistepScheduler,
+    DiffusionPipeline
 )
 
 
-MODEL_CACHE = "model_cache"
+MODEL_CACHE = "save_dir"
 
 
 import torch
@@ -31,18 +33,21 @@ class Predictor(BasePredictor):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
 
-        self.pipe_prior = KandinskyPriorPipeline.from_pretrained(
-            "kandinsky-community/kandinsky-2-1-prior",
-            cache_dir=MODEL_CACHE,
+        self.pipe_prior = DiffusionPipeline.from_pretrained(
+            #"kandinsky-community/kandinsky-2-2-prior",
+            os.path.join(MODEL_CACHE, "prior"),
+            #cache_dir=MODEL_CACHE,
             local_files_only=True,
             torch_dtype=torch.bfloat16,
         ).to("cuda")
-        self.t2i_pipe = KandinskyPipeline.from_pretrained(
-            "kandinsky-community/kandinsky-2-1",
-            cache_dir=MODEL_CACHE,
+        self.t2i_pipe = DiffusionPipeline.from_pretrained(
+            #"kandinsky-community/kandinsky-2-2-decoder",
+            #cache_dir=MODEL_CACHE,
+            os.path.join(MODEL_CACHE, "decoder"),
             local_files_only=True,
             torch_dtype=torch.bfloat16,
         ).to("cuda")
+        
         #print(dir(self.t2i_pipe))
         
         # movq is bfloat16 incompatible so cast to float16 and wrap decoder
@@ -60,7 +65,7 @@ class Predictor(BasePredictor):
         #    local_files_only=True,
         #    torch_dtype=torch.float16,
         #).to("cuda")
-        self.scheduler = "ddim"
+        self.scheduler = "unipc"
 
     @torch.inference_mode()
     def predict(
@@ -72,8 +77,8 @@ class Predictor(BasePredictor):
         ),
         scheduler: str = Input(
             description="Choose a scheduler",
-            choices=["dpm", "ddim"],
-            default="ddim",
+            choices=["dpm", "ddim", "unipc"],
+            default="unipc",
         ),
         prompt: str = Input(
             description="Provide input prompt",
@@ -120,8 +125,7 @@ class Predictor(BasePredictor):
         ),
         img_weight: float = Input(
             description="Weight of image - larger than 1 means more weight to image, lower than 0 is more weight to text", 
-            default=1.0, 
-            ge=0.0, le=10.0,
+            default=1.0, ge=0.0, le=10.0,
         ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
@@ -134,9 +138,11 @@ class Predictor(BasePredictor):
         if scheduler != self.scheduler:
             self.scheduler = scheduler
             if scheduler == "ddim":
-                self.t2i_pipe.scheduler = DDIMScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="scheduler")
+                self.t2i_pipe.scheduler = DDIMScheduler.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", subfolder="scheduler")
             elif scheduler == "dpm":
-                self.t2i_pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="scheduler")
+                self.t2i_pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", subfolder="scheduler")
+            elif scheduler == "unipc":
+                self.t2i_pipe.scheduler = UniPCMultistepScheduler.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", subfolder="scheduler")
         
         guidance_scale_prior = 2
         
@@ -162,13 +168,13 @@ class Predictor(BasePredictor):
         ).to_tuple()
 
         images = self.t2i_pipe(
-            prompt=[prompt] * num_outputs,
-            negative_prompt=[negative_prompt] * num_outputs,
+            #prompt=[prompt] * num_outputs,
+            #negative_prompt=[negative_prompt] * num_outputs,
             image_embeds=image_embeds,
+            negative_image_embeds=negative_image_embeds,
             width=width,
             height=height,
             num_inference_steps=num_inference_steps,
-            negative_image_embeds=negative_image_embeds,
             guidance_scale=guidance_scale,
         ).images
    
